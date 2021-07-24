@@ -6,10 +6,26 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/unrolled/render"
+)
+
+// Env get a environment variable adding a defaultValue
+func Env(key, defaultValue string) string {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return defaultValue
+	}
+	return val
+}
+
+var (
+	rateLimit = Env("RATE_LIMIT", "10")
 )
 
 // EchoRSP response for /get
@@ -21,17 +37,20 @@ type EchoRSP struct {
 
 // WebApp Main web app
 type WebApp struct {
-	addr   string
-	r      *chi.Mux
-	render *render.Render
+	addr      string
+	r         *chi.Mux
+	render    *render.Render
+	rateLimit int
 }
 
 // NewWA creation
 func NewWA(addr string) *WebApp {
+	rl, _ := strconv.Atoi(rateLimit)
 	return &WebApp{
-		addr:   addr,
-		r:      chi.NewRouter(),
-		render: render.New(),
+		addr:      addr,
+		r:         chi.NewRouter(),
+		render:    render.New(),
+		rateLimit: rl,
 	}
 }
 
@@ -41,6 +60,7 @@ func (wa *WebApp) Run() {
 	wa.r.Use(middleware.RealIP)
 	wa.r.Use(middleware.Recoverer)
 	wa.r.Use(middleware.Logger)
+	wa.r.Use(httprate.LimitByIP(wa.rateLimit, 1*time.Minute))
 	wa.r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("welcome"))
 	})
